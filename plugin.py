@@ -18,6 +18,7 @@
 from typing import Callable
 
 from pymodbus.client.common import ReadCoilsResponse, ReadHoldingRegistersResponse, ReadInputRegistersResponse
+from pymodbus.exceptions import ModbusException
 import Domoticz
 from pymodbus.client.sync import ModbusTcpClient
 
@@ -116,17 +117,26 @@ class FairlandModbusClient:
 
     def get_temp(self, address: int, function: Callable):
         response = function(address=address, count=1, unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Could not get temp due to connection error")
+            return None
         degree = ((response.registers[0] - 96) / 2) + 18
         return f"{degree}"
 
     def get_speed_percentage(self):
         Domoticz.Log("Getting Running Speed")
         response: ReadInputRegistersResponse = self._client.read_input_registers(address=0, count=1, unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Could not get speed percentage due to connection error")
+            return None
         return f"{response.registers[0]}"
 
     def get_running_mode(self):
         Domoticz.Log("Getting running mode")
         response: ReadHoldingRegistersResponse = self._client.read_holding_registers(address=1, count=1, unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Could not get running mode due to connection error")
+            return None
         return response.registers[0]
 
     def set_running_mode(self, mode: int):
@@ -137,32 +147,49 @@ class FairlandModbusClient:
         new_mode = RUNNING_MODE_MAPPING.get(new_mode_number)
         Domoticz.Log(f"Setting device to mode {mode} ({new_mode})")
         Domoticz.Log(f"Writing {new_mode_number} on address 1")
-        self._client.write_register(address=1, value=new_mode_number, unit=1)
+        response = self._client.write_register(address=1, value=new_mode_number, unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Cannot set running mode due to connection error")
 
     def set_heating_temp(self, temperature: float):
         Domoticz.Log(f"Setting device to heating temp {temperature}")
         register_value = (temperature - 18) * 2 + 96
-        self._client.write_register(address=3, value=int(register_value), unit=1)
+        response = self._client.write_register(address=3, value=int(register_value), unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Cannot set heating temp due to connection error")
+
 
     def turn_on_off(self, on: bool):
         Domoticz.Log(f"Turning device {'on' if on else 'off'}")
-        self._client.write_coil(address=0, value=int(on), unit=1)
+        response = self._client.write_coil(address=0, value=int(on), unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Cannot turn on/off due to connection error")
+
 
     def get_on_off_state(self):
         Domoticz.Log("Fetching on/off state")
         response: ReadCoilsResponse = self._client.read_coils(address=0, count=1, unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Could not get on/off state due to connection error")
+            return None
         return response.bits[0]
 
 
     def get_error_state(self):
         Domoticz.Log("Fetching Error State")
         response: ReadDiscreteInputsResponse = self._client.read_discrete_inputs(address=48, count=48, unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Could not get error state due to connection error")
+            return None
         indices = [index for index, v in enumerate(response.bits) if v == 1]
         return indices
 
     def get_wp_state(self):
         Domoticz.Log("Fetching Device State")
         response: ReadDiscreteInputsResponse = self._client.read_discrete_inputs(address=0, count=48, unit=1)
+        if isinstance(response, ModbusException):
+            Domoticz.Log("Could not get wp state due to connection error")
+            return None
         return "".join(map(str, map(int, response.bits)))
 
 
@@ -245,22 +272,48 @@ class BasePlugin:
             Domoticz.Log("Could not update values, because ModbusClient is not initialized")
             return
 
-        Devices[1].Update(nValue=0, sValue=self._client.get_outlet_temperature())
-        Devices[2].Update(nValue=0, sValue=self._client.get_inlet_temperature())
-        Devices[3].Update(nValue=0, sValue=self._client.get_ambient_temperature())
-        Devices[4].Update(nValue=0, sValue=self._client.get_heating_temperature())
-        Devices[5].Update(nValue=0, sValue=self._client.get_speed_percentage())
-        Devices[6].Update(nValue=Devices[7].nValue, sValue=f"{list(REVERSE_RUNNING_MODE_MAP.keys())[self._client.get_running_mode()]}")
+        # TODO: Make this less ugly
+        outlet_temp = self._client.get_outlet_temperature()
+        if outlet_temp is None:
+            return None
+        Devices[1].Update(nValue=0, sValue=outlet_temp)
+        inlet_temp = self._client.get_inlet_temperature()
+        if inlet_temp is None:
+            return None
+        Devices[2].Update(nValue=0, sValue=inlet_temp)
+        ambient_temp = self._client.get_ambient_temperature
+        if ambient_temp is None:
+            return None
+        Devices[3].Update(nValue=0, sValue=ambient_temp)
+        heating_temp = self._client.get_heating_temperature()
+        if heating_temp is None:
+            return None
+        Devices[4].Update(nValue=0, sValue=heating_temp)
+        speed_percentage = self._client.get_speed_percentage()
+        if speed_percentage is None:
+            return None
+        Devices[5].Update(nValue=0, sValue=speed_percentage)
+        running_mode = self._client.get_running_mode()
+        if running_mode is None:
+            return None
+        Devices[6].Update(nValue=Devices[7].nValue, sValue=f"{list(REVERSE_RUNNING_MODE_MAP.keys())[running_mode]}")
         on_off = self._client.get_on_off_state()
+        if on_off is None:
+            return None
         Devices[7].Update(nValue=on_off, sValue=f"{on_off}")
 
         error_numbers = self._client.get_error_state()
+        if error_numbers is None:
+            return None
         if len(error_numbers) == 0:
             Devices[8].Update(nValue=0, sValue="Running Normal")
         else:
             Devices[8].Update(nValue=0, sValue=f"{' : '.join([ERROR_MESSAGE_MAP.get(error_number) for error_number in error_numbers])}")
 
-        Devices[9].Update(nValue=0, sValue=f"{self._client.get_wp_state()}")
+        wp_state = self._client.get_wp_state()
+        if wp_state is None:
+            return None
+        Devices[9].Update(nValue=0, sValue=f"{wp_state}")
 
 global _plugin
 _plugin = BasePlugin()
