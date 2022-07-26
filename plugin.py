@@ -281,7 +281,7 @@ class BasePlugin:
         if inlet_temp is None:
             return None
         Devices[2].Update(nValue=0, sValue=inlet_temp)
-        ambient_temp = self._client.get_ambient_temperature
+        ambient_temp = self._client.get_ambient_temperature()
         if ambient_temp is None:
             return None
         Devices[3].Update(nValue=0, sValue=ambient_temp)
