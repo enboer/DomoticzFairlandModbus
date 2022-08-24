@@ -116,6 +116,9 @@ class FairlandModbusClient:
         return self.get_temp(3, self._client.read_holding_registers)
 
     def get_temp(self, address: int, function: Callable):
+        if not self._client.connect():
+            Domoticz.Log("Could not get temp due to connection error")
+            return None
         response = function(address=address, count=1, unit=1)
         if isinstance(response, ModbusException):
             Domoticz.Log("Could not get temp due to connection error")
@@ -124,6 +127,9 @@ class FairlandModbusClient:
         return f"{degree}"
 
     def get_speed_percentage(self):
+        if not self._client.connect():
+            Domoticz.Log("Could not get speed percentage due to connection error")
+            return None
         Domoticz.Log("Getting Running Speed")
         response: ReadInputRegistersResponse = self._client.read_input_registers(address=0, count=1, unit=1)
         if isinstance(response, ModbusException):
@@ -132,6 +138,9 @@ class FairlandModbusClient:
         return f"{response.registers[0]}"
 
     def get_running_mode(self):
+        if not self._client.connect():
+            Domoticz.Log("Could not get running mode due to connection error")
+            return None
         Domoticz.Log("Getting running mode")
         response: ReadHoldingRegistersResponse = self._client.read_holding_registers(address=1, count=1, unit=1)
         if isinstance(response, ModbusException):
@@ -140,6 +149,9 @@ class FairlandModbusClient:
         return response.registers[0]
 
     def set_running_mode(self, mode: int):
+        if not self._client.connect():
+            Domoticz.Log("Could not set running mode due to connection error")
+            return None
         new_mode_number = REVERSE_RUNNING_MODE_MAP.get(mode)
         if new_mode_number is None:
             Domoticz.Log(f"Invalid/unknown running mode {mode}")
@@ -152,6 +164,9 @@ class FairlandModbusClient:
             Domoticz.Log("Cannot set running mode due to connection error")
 
     def set_heating_temp(self, temperature: float):
+        if not self._client.connect():
+            Domoticz.Log("Could not set heating temp due to connection error")
+            return None
         Domoticz.Log(f"Setting device to heating temp {temperature}")
         register_value = (temperature - 18) * 2 + 96
         response = self._client.write_register(address=3, value=int(register_value), unit=1)
@@ -160,6 +175,9 @@ class FairlandModbusClient:
 
 
     def turn_on_off(self, on: bool):
+        if not self._client.connect():
+            Domoticz.Log("Could not turn on/off due to connection error")
+            return None
         Domoticz.Log(f"Turning device {'on' if on else 'off'}")
         response = self._client.write_coil(address=0, value=int(on), unit=1)
         if isinstance(response, ModbusException):
@@ -167,6 +185,9 @@ class FairlandModbusClient:
 
 
     def get_on_off_state(self):
+        if not self._client.connect():
+            Domoticz.Log("Could not get on/off state due to connection error")
+            return None
         Domoticz.Log("Fetching on/off state")
         response: ReadCoilsResponse = self._client.read_coils(address=0, count=1, unit=1)
         if isinstance(response, ModbusException):
@@ -176,6 +197,9 @@ class FairlandModbusClient:
 
 
     def get_error_state(self):
+        if not self._client.connect():
+            Domoticz.Log("Could not get error state due to connection error")
+            return None
         Domoticz.Log("Fetching Error State")
         response: ReadDiscreteInputsResponse = self._client.read_discrete_inputs(address=48, count=48, unit=1)
         if isinstance(response, ModbusException):
@@ -185,6 +209,9 @@ class FairlandModbusClient:
         return indices
 
     def get_wp_state(self):
+        if not self._client.connect():
+            Domoticz.Log("Could not get wp state due to connection error")
+            return None
         Domoticz.Log("Fetching Device State")
         response: ReadDiscreteInputsResponse = self._client.read_discrete_inputs(address=0, count=48, unit=1)
         if isinstance(response, ModbusException):
